@@ -1,0 +1,53 @@
+demFolder = "[...]/de_inferno";
+demoinfogoFolder = "[...]/demoinfogo";
+
+demFiles = FileNames["*.dem", demFolder];
+
+Do[
+ Run[demoinfogoFolder <> " " <> ToString@demFiles[[n]] <> 
+   " |grep -A 6 weapon_fire > " <> ToString@demFiles[[n]] <> ".txt"]
+ , {n, 1, Length@demFiles}]
+
+data = {};
+data = Flatten[
+   Table[Join[data, 
+     Select[Transpose[{#[[4 ;; ;; 8]], #[[7 ;; ;; 8]]} &@
+         Import[ToString@demFiles[[n]] <> ".txt", "Lines"][[
+          17 ;;]]], #[[2]] != " weapon: knife " &][[All, 1]]], {n, 
+     Length@demFiles}]];
+data = ToExpression@StringSplit[#, {" ", ","}][[{2, 4}]] & /@ data;
+data = Cases[data, {_Real, _Real}];
+
+Needs["Polytopes`"];
+hexbin[data_, cs_, ptype_, {{xmin_, xmax_}, {ymin_, ymax_}}] := 
+ Module[{tileContaining, nearestWithinTile, nearest, tally, vh, hexr, 
+   trr}, tileContaining[{x_, y_}] := {Floor[x], 
+    Sqrt[3] Floor[y/Sqrt[3]]};
+  nearestWithinTile = 
+   Nearest[{{0, 0}, {1, 0}, {1/2, Sqrt[3]/2}, {0, Sqrt[3]}, {1, 
+      Sqrt[3]}}];
+  nearest[point_] := 
+   Module[{tile, relative}, tile = tileContaining[point];
+    relative = point - tile;
+    tile + First@nearestWithinTile[relative]];
+  vh = cs 1.05 Vertices[Hexagon]/Sqrt[3];
+  trr[v_, tr_] := Translate[Rotate[Polygon[v], Pi/2], tr];
+  tally = Tally[cs (nearest /@ (data/cs))];
+  Print[Max[Last /@ tally]];
+  With[{maxTally = Max[Last /@ tally] - 765},
+   Graphics[
+    Table[Switch[ptype,
+      1, {ColorData["SolarColors"][Sqrt[Last@tally[[n]]/maxTally]], 
+       trr[vh, First@tally[[n]]]},
+      2, {Blend[{Black, Purple, Orange, Red}, 
+        Sqrt[Last@tally[[n]]/maxTally]], trr[vh, First@tally[[n]]]},
+      3, trr[Last@tally[[n]]/maxTally vh, First@tally[[n]]],
+      4, trr[Sqrt[Last@tally[[n]]/maxTally] vh, First@tally[[n]]]
+      ], {n, Length@tally}]
+    , Frame -> False, PlotRange -> {{xmin, xmax}, {ymin, ymax}}, 
+    PlotRangeClipping -> True, Background -> Black, ImageSize -> 1024
+    ]]]
+    
+    h = hexbin[data, 20, 
+  2, {{-30 + Min@#, 30 + Max@#} &@
+    data[[All, 1]], {-30 + Min@#, 30 + Max@#} &@data[[All, 2]]}]
